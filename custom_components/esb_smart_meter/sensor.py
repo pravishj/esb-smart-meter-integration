@@ -11,7 +11,8 @@ from bs4 import BeautifulSoup
 from io import StringIO
 from abc import abstractmethod
 
-
+from homeassistant.helpers import translation
+from homeassistant.helpers.translation import async_get_translations
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import UnitOfEnergy
 from homeassistant.helpers.entity import Entity
@@ -25,6 +26,8 @@ MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=5)
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the ESB Smart Meter sensor."""
+    translations = await async_get_translations(hass)
+    translations.add('esb_smart_meter', 'en', '/config/custom_components/esb_smart_meter/translations/en.json')
     pass
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -162,7 +165,7 @@ class ESBCachingApi:
                 self._cached_data = await self._esb_api.fetch()
                 self._cached_data_timestamp = datetime.now()
             except Exception as err:
-                LOGGER.error('Error fetching data: %s', err)
+                LOGGER.error(translation.get_translation(self._hass, 'error_fetching_data').format(error=err))
                 self._cached_data = None
                 self._cached_data_timestamp = None
                 raise err
