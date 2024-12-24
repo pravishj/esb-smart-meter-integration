@@ -259,7 +259,15 @@ class ESBDataApi:
         ).raise_for_status()
 
         LOGGER.info("Status Code %s", submit.status_code")
-        LOGGER.info("Logged in Successfully")
+        LOGGER.info("Logged in Successfully Let's test the page")
+
+        user_welcome_soup = BeautifulSoup(submit.text,'html.parser')
+        user_elements = user_welcome_soup.find('h1', class_='esb-title-h1')
+        if user_elements.text[:2] == "We":
+            print("[!] Confirmed User Login: ", user_elements.text)    # It should return "Welcome, Name Surname"
+        else:
+            LOGGER.info("[!!!] No Welcome message, User is not logged in.")
+            session.close()
         
         return session
     
