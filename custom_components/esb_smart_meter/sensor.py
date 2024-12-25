@@ -181,21 +181,22 @@ class ESBDataApi:
         self._mprn = mprn
 
     def __login(self):
+
         LOGGER.info("Start session")
         session = requests.Session()
 
-        # Get CSRF token and stuff
+        # Get CSRF token and other stuff
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
         })
-        login_page = session.get('https://myaccount.esbnetworks.ie/',
-                                 allow_redirects=True,
-                                 timeout=10)
-        LOGGER.info("Landing Page Status Code %s", login_page.status_code)
+        login_page = session.get('https://myaccount.esbnetworks.ie/',allow_redirects=True,timeout=10)
+        login_page.raise_for_status()
+        print("Login Page content %s", login_page.content)
+
         settings_var = re.findall(r"(?<=var SETTINGS = )\S*;", str(login_page.content))[0][:-1]
         settings = json.loads(settings_var)
-        LOGGER.info("CSRF Token %s", settings['csrf'])
-        LOGGER.info("Transaction Token %s", settings['transId'])
+        LOGGER.debug("Retrieved CSRF Token for login: %s", settings['csrf'])
+        LOGGER.debug("Retrieved Transaction Token: %s", settings['transId'])
 
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -227,27 +228,25 @@ class ESBDataApi:
                                              timeout=10)
         confirm_login_response.raise_for_status()
         soup = BeautifulSoup(confirm_login_response.content, 'html.parser')
-        form = soup.find('form', {'id': 'auto'})
+        
+        # Find the login form
+        form = soup.find('form', {"id": "localAccountForm"})
+        if not form:
+            raise ValueError("Login form not found on the login page")
+
+        # Validate the Email Address value
+        email_info_input = form.find("input", {"name": "Email Address"})
+        if email_info_input is None or "value" not in email_info_input.attrs:
+            raise ValueError("Email address input element not found on the login page")
+        email_info = email_info_input["value"]
+
+        # Validate the Password element
+        pass_input = form.find("input", {"name": "Password"})
+        if pass_input is None or "value" not in pass_input.attrs:
+            raise ValueError("Password input element not found on the login page")
+        pass = pass_input["value"]
 
         LOGGER.info("Submitting login form")
-        # Validate the State value
-        state_input = soup.find("input", {"name": "state"})
-        if state_input is None or "value" not in state_input.attrs:
-            raise ValueError("State input not found on the login page")
-        state = state_input["value"]
-
-        # Validate the client info value
-        client_info_input = form.find('input', {'name': 'client_info'})
-        if client_info_input is None or "value" not in client_info_input.attrs:
-            raise ValueError("Client Info not found on the login page")
-        client_info = client_info_input["value"]
-
-        # Validate the code value
-        code_input = form.find('input', {'name': 'code'})
-        if code_input is None or "value" not in code_input.attrs:
-            raise ValueError("Code input not found on the login page")
-        code = code_input["value"]
-
         submit=session.post(
             form['action'],
             data={
