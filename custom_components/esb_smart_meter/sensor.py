@@ -244,7 +244,7 @@ class ESBDataApi:
         pass_input = form.find("input", {"name": "Password"})
         if pass_input is None or "value" not in pass_input.attrs:
             raise ValueError("Password input element not found on the login page")
-        pass = pass_input["value"]
+        password = pass_input["value"]
 
         LOGGER.info("Submitting login form")
         submit=session.post(
