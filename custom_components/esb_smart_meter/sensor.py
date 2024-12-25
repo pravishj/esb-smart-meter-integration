@@ -257,7 +257,7 @@ class ESBDataApi:
             timeout=10
         ).raise_for_status()
 
-        LOGGER.info("Status Code %s", submit.status_code")
+        LOGGER.info("Status Code %s", submit.status_code)
         LOGGER.info("Logged in Successfully Let's test the page")
 
         user_welcome_soup = BeautifulSoup(submit.text,'html.parser')
