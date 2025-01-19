@@ -187,86 +187,251 @@ class ESBDataApi:
 
         # Get CSRF token and other stuff
         session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0',
         })
-        login_page = session.get('https://myaccount.esbnetworks.ie/',allow_redirects=True,timeout=10)
-        login_page.raise_for_status()
-        print("Login Page content %s", login_page.content)
+        try:
+            request_1_response = session.get('https://myaccount.esbnetworks.ie/', allow_redirects=True, timeout= (10,5))     # timeout -- 10sec for connect and 5sec for response
+        except requests.exceptions.Timeout:
+            LOGGER.error("Server is not responding, request timed out. Try again later.")
+            session.close()
+            raise SystemExit(0)
+        except requests.exceptions.RequestException as e:
+            LOGGER.error("An error occurred:", e)
+            session.close()
+            raise SystemExit(0)
+        
+        result = re.findall(r"(?<=var SETTINGS = )\S*;", str(request_1_response.content))
+        settings = json.loads(result[0][:-1])
+        tester_soup = BeautifulSoup(request_1_response.content, 'html.parser')
+        page_title = tester_soup.find("title")
+        request_1_response_cookies = session.cookies.get_dict()
+        x_csrf_token = settings['csrf']
+        transId = settings['transId']
+        x_ms_cpim_sso = request_1_response_cookies.get('x-ms-cpim-sso:esbntwkscustportalprdb2c01.onmicrosoft.com_0')
+        x_ms_cpim_csrf = request_1_response_cookies.get('x-ms-cpim-csrf')
+        x_ms_cpim_trans = request_1_response_cookies.get('x-ms-cpim-trans')
 
-        settings_var = re.findall(r"(?<=var SETTINGS = )\S*;", str(login_page.content))[0][:-1]
-        settings = json.loads(settings_var)
-        LOGGER.debug("Retrieved CSRF Token for login: %s", settings['csrf'])
-        LOGGER.debug("Retrieved Transaction Token: %s", settings['transId'])
+        # Help to debug the login process
+        LOGGER.debug("Request #1 Page Title :: ", page_title.text)
+        LOGGER.debug("Request #1 Status Code ::", request_1_response.status_code)
+        LOGGER.debug("Request #1 Response Headers ::", request_1_response.headers)
+        LOGGER.debug("Request #1 Cookies Captured ::", request_1_response_cookies)
+        LOGGER.debug("Request #1 content %s", request_1_response.content)
+        LOGGER.debug("Retrieved CSRF Token for login: %s", x_csrf_token)
+        LOGGER.debug("Retrieved Transaction Token: %s", transId)
+        LOGGER.debug("##### creating x_ms_cpim cookies ######")
+        LOGGER.debug("x_ms_cpim_sso ::", request_1_response_cookies.get('x-ms-cpim-sso:esbntwkscustportalprdb2c01.onmicrosoft.com_0'))
+        LOGGER.debug("x_ms_cpim_csrf ::", request_1_response_cookies.get('x-ms-cpim-csrf'))
+        LOGGER.debug("x_ms_cpim_trans ::", request_1_response_cookies.get('x-ms-cpim-trans'))
+        LOGGER.debug("##### REQUEST 2 -- POST [SelfAsserted] ######")
 
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'x-csrf-token': settings['csrf'],
         })
 
-        # Login
-        login_response = session.post(
-            'https://login.esbnetworks.ie/esbntwkscustportalprdb2c01.onmicrosoft.com/B2C_1A_signup_signin/SelfAsserted?tx=' + settings['transId'] + '&p=B2C_1A_signup_signin', 
+        request_2_response = session.post(
+            'https://login.esbnetworks.ie/esbntwkscustportalprdb2c01.onmicrosoft.com/B2C_1A_signup_signin/SelfAsserted?tx=' + transId + '&p=B2C_1A_signup_signin', 
             data={
-                'signInName': self._username, 
-                'password': self._password, 
-                'request_type': 'RESPONSE'
+            'signInName': self._username, 
+            'password': self._password, 
+            'request_type': 'RESPONSE'
             },
             headers={
-                'x-csrf-token': settings['csrf'],
-                'Content-Type': 'application/x-www-form-urlencoded'
+            'x-csrf-token': x_csrf_token,
+            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Origin': 'https://login.esbnetworks.ie',
+            'Dnt': '1',
+            'Sec-Gpc': '1',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+            'Priority': 'u=0',
+            'Te': 'trailers',
             },
-            timeout=10)
-        login_response.raise_for_status()
-        
-        confirm_login_response = session.get('https://login.esbnetworks.ie/esbntwkscustportalprdb2c01.onmicrosoft.com/B2C_1A_signup_signin/api/CombinedSigninAndSignup/confirmed',
-                                             params={
-                                                'rememberMe': False,
-                                                'csrf_token': settings['csrf'],
-                                                'tx': settings['transId'],
-                                                'p': 'B2C_1A_signup_signin'
-                                             },
-                                             timeout=10)
-        confirm_login_response.raise_for_status()
-        soup = BeautifulSoup(confirm_login_response.content, 'html.parser')
-        
-        # Find the login form
-        form = soup.find('form', {"id": "localAccountForm"})
-        if not form:
-            raise ValueError("Login form not found on the login page")
-
-        # Validate the Email Address value
-        email_info_input = form.find("input", {"name": "Email Address"})
-        if email_info_input is None or "value" not in email_info_input.attrs:
-            raise ValueError("Email address input element not found on the login page")
-        email_info = email_info_input["value"]
-
-        # Validate the Password element
-        pass_input = form.find("input", {"name": "Password"})
-        if pass_input is None or "value" not in pass_input.attrs:
-            raise ValueError("Password input element not found on the login page")
-        password = pass_input["value"]
-
-        LOGGER.info("Submitting login form")
-        submit=session.post(
-            form['action'],
-            data={
-                'state': state,
-                'client_info': client_info,
-                'code': code
+            timeout=10,
+            cookies={
+                'x-ms-cpim-csrf':request_1_response_cookies.get('x-ms-cpim-csrf'),
+                'x-ms-cpim-trans':request_1_response_cookies.get('x-ms-cpim-trans'),
             },
-            timeout=10
-        ).raise_for_status()
+            allow_redirects=False)
+        
+        request_2_response_cookies = session.cookies.get_dict()
+        LOGGER.debug("Request #2 Status Code ::", request_2_response.status_code)
+        LOGGER.debug("Request #2 Response Headers ::", request_2_response.headers)
+        LOGGER.debug("Request #2 Cookies Captured :: ", request_2_response_cookies)
+        LOGGER.debug("Request #2 text :: ", request_2_response.text)
+        LOGGER.debug("##### REQUEST 3 -- GET [API CombinedSigninAndSignup] ######")
 
-        LOGGER.info("Status Code %s", submit.status_code)
-        LOGGER.info("Logged in Successfully Let's test the page")
+        request_3_response = session.get(
+            'https://login.esbnetworks.ie/esbntwkscustportalprdb2c01.onmicrosoft.com/B2C_1A_signup_signin/api/CombinedSigninAndSignup/confirmed',
+            params={
+            'rememberMe': False,
+            'csrf_token': x_csrf_token,
+            'tx': transId,
+            'p': 'B2C_1A_signup_signin',
+            }, 
+            timeout=10,
+            headers={
+            "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Dnt": "1",
+            "Sec-Gpc": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+            "Priority": "u=0, i",
+            "Pragma": "no-cache",
+            "Cache-Control": "no-cache",
+            "Te": "trailers",
+            },
+            cookies={
+                "x-ms-cpim-csrf":request_2_response_cookies.get("x-ms-cpim-csrf"),
+                'x-ms-cpim-trans':request_2_response_cookies.get("x-ms-cpim-trans"),
+            },
+        )
+        tester_soup = BeautifulSoup(request_3_response.content, 'html.parser')
+        page_title = tester_soup.find("title")
+        request_3_response_cookies = session.cookies.get_dict()
 
-        user_welcome_soup = BeautifulSoup(submit.text,'html.parser')
-        user_elements = user_welcome_soup.find('h1', class_='esb-title-h1')
-        if user_elements.text[:2] == "We":
-            print("[!] Confirmed User Login: ", user_elements.text)    # It should return "Welcome, Name Surname"
+        LOGGER.debug("[!] Page Title :: ", page_title.text)      # will print "Loading..." if failed
+        LOGGER.debug("[!] Request #3 Status Code ::", request_3_response.status_code)
+        LOGGER.debug("[!] Request #3 Response Headers ::", request_3_response.headers)
+        LOGGER.debug("[!] Request #3 Cookies Captured :: ", request_3_response_cookies)
+        LOGGER.debug("[!] Request #3 Content :: ", request_3_response.content)
+        LOGGER.debug("##### TEST IF SUCCESS ######")
+
+        request_3_response_head_test = request_3_response.text[0:21]
+        if (request_3_response_head_test == "<!DOCTYPE html PUBLIC"):
+            page_title = tester_soup.find("title")
+            LOGGER.info("[PASS] SUCCESS -- ALL OK [PASS]")
+            LOGGER.debug("Page Title :: ", page_title.text)
+        else: 
+            session.close()
+            try:
+                tester_soup_msg = tester_soup.find('h1')
+                tester_soup_msg = tester_soup_msg.text
+                LOGGER.debug("[FAILED] Page response ::", tester_soup_msg)
+            except: tester_soup_msg = ""
+            try:
+                no_js_msg = tester_soup.find('div', id='no_js')
+                no_js_msg = no_js_msg.text
+                LOGGER.error("[FAILED] Page response :: ", no_js_msg)
+            except: no_js_msg = ""
+            try:
+                no_cookie_msg = tester_soup.find('div', id='no_cookie')
+                no_cookie_msg = no_cookie_msg.text
+                LOGGER.error("[FAILED] Page response :: ", no_cookie_msg)
+            except: no_cookie_msg = ""
+            LOGGER.error("Unable to reach login page -- too many retries (max=2 in 24h) or prior sessions was not closed properly. Please try again after midnight.")
+            raise SystemExit(0)
+
+        LOGGER.debug("REQUEST - SOUP - state & client_info & code")
+        soup = BeautifulSoup(request_3_response.content, 'html.parser')
+        try:
+            form = soup.find('form', {'id': 'auto'})
+            login_url_ = form['action']
+            state_ = form.find('input', {'name': 'state'})['value']
+            client_info_ = form.find('input', {'name': 'client_info'})['value']
+            code_ = form.find('input', {'name': 'code'})['value']
+            LOGGER.debug("login url ::" ,login_url_)
+            LOGGER.debug("state_ ::", state_)
+            LOGGER.debug("client_info_ ::", client_info_)
+            LOGGER.debug("code_ ::", code_)
+        except:
+            LOGGER.error("Error: Unable to get full set of required cookies from [request_3_response.content] -- too many retries (captcha?) or prior sessions was not closed properly. Please wait 6 hours for server to timeout and try again.")
+            session.close()
+            raise SystemExit(0)
+
+        LOGGER.debug("REQUEST 4 -- POST [signin-oidc]")
+
+        request_4_headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "https://login.esbnetworks.ie",
+            "Dnt": "1",
+            "Sec-Gpc": "1",
+            "Referer": "https://login.esbnetworks.ie/",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-site",
+            "Priority": "u=0, i",
+            "Pragma": "no-cache",
+            "Cache-Control": "no-cache",
+            "Te": "trailers",
+        }
+
+        request_4_response = session.post(
+                login_url_,
+                allow_redirects=False,
+                data={
+                'state': state_,
+                'client_info': client_info_,
+                'code': code_,
+                },
+                headers=request_4_headers,
+            )
+
+        request_4_response_cookies = session.cookies.get_dict()
+        LOGGER.debug("[!] Request #4 Status Code ::", request_4_response.status_code)  # expect 302
+        LOGGER.debug("[!] Request #4 Response Headers ::", request_4_response.headers)
+        LOGGER.debug("[!] Request #4 Cookies Captured ::", request_4_response_cookies)
+        LOGGER.debug("[!] Request #4 Content ::", request_4_response.content)
+        LOGGER.debug("##### REQUEST 5 -- GET [https://myaccount.esbnetworks.ie] ######")
+
+        request_5_url = "https://myaccount.esbnetworks.ie"
+        request_5_headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Referer": "https://login.esbnetworks.ie/",
+            "Dnt": "1",
+            "Sec-Gpc": "1",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-site",
+            "Priority": "u=0, i",
+            "Pragma": "no-cache",
+            "Cache-Control": "no-cache",
+            "Te": "trailers",
+        }
+        request_5_cookies = {
+            "ARRAffinity":request_4_response_cookies.get("ARRAffinity"),
+            "ARRAffinitySameSite":request_4_response_cookies.get("ARRAffinitySameSite"),
+        }
+
+        request_5_response = session.get(request_5_url,headers=request_5_headers,cookies=request_5_cookies)
+        request_5_response_cookies = session.cookies.get_dict()
+
+        LOGGER.debug("Request #5 Status Code ::", request_5_response.status_code)
+        LOGGER.debug("Request #5 Response Headers ::", request_5_response.headers)
+        LOGGER.debug("Request #5 Cookies Captured ::", request_5_response_cookies)
+        LOGGER.debug("Request #5 Content ::", request_5_response.content)
+        LOGGER.info("Welcome page block")
+            
+        user_welcome_soup = BeautifulSoup(request_5_response.text,'html.parser')
+        welcome_page_title_ = user_welcome_soup.find('title')
+        LOGGER.debug("Page Title ::", welcome_page_title_.text)                   # it should print "Customer Portal"
+        welcome_page_title_ = user_welcome_soup.find('h1', class_='esb-title-h1')
+        if welcome_page_title_.text[:2] == "We":
+            LOGGER.info("Confirmed User Login ::", welcome_page_title_.text)    # It should print "Welcome, Name Surname"
         else:
             LOGGER.info("[!!!] No Welcome message, User is not logged in.")
             session.close()
+        asp_net_core_cookie = request_5_response_cookies.get(".AspNetCore.Cookies")
         
         return session
     
