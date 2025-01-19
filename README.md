@@ -2,7 +2,7 @@
 
 # ESB Smart Meter integration for Home Assistant (Work InProgress NOT WORKING YET)
 
-Inspired by [https://github.com/badger707/esb-smart-meter-reading-automation](https://github.com/RobinJ1995/home-assistant-esb-smart-meter-integration)
+Inspired by [https://github.com/badger707/esb-smart-meter-reading-automation](https://github.com/badger707/esb-smart-meter-reading-automation)
 
 ## Pre-Requirements
 
