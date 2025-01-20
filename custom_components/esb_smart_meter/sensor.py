@@ -194,11 +194,9 @@ class ESBDataApi:
         except requests.exceptions.Timeout:
             LOGGER.error("Server is not responding, request timed out. Try again later.")
             session.close()
-            raise SystemExit(0)
         except requests.exceptions.RequestException as e:
             LOGGER.error("An error occurred:", e)
             session.close()
-            raise SystemExit(0)
         
         result = re.findall(r"(?<=var SETTINGS = )\S*;", str(request_1_response.content))
         settings = json.loads(result[0][:-1])
@@ -331,7 +329,6 @@ class ESBDataApi:
                 LOGGER.error("[FAILED] Page response :: ", no_cookie_msg)
             except: no_cookie_msg = ""
             LOGGER.error("Unable to reach login page -- too many retries (max=2 in 24h) or prior sessions was not closed properly. Please try again after midnight.")
-            raise SystemExit(0)
 
         LOGGER.debug("REQUEST - SOUP - state & client_info & code")
         soup = BeautifulSoup(request_3_response.content, 'html.parser')
@@ -348,7 +345,6 @@ class ESBDataApi:
         except:
             LOGGER.error("Error: Unable to get full set of required cookies from [request_3_response.content] -- too many retries (captcha?) or prior sessions was not closed properly. Please wait 6 hours for server to timeout and try again.")
             session.close()
-            raise SystemExit(0)
 
         LOGGER.debug("REQUEST 4 -- POST [signin-oidc]")
 
